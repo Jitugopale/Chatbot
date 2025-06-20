@@ -1,30 +1,3 @@
-// import OpenAI from 'openai';
-// import { OPENAI_API_KEY } from '../secrets.js';
-
-// const openai = new OpenAI({
-//   apiKey: OPENAI_API_KEY, // or use your secrets file here
-// });
-
-// export const chatController = async (req, res) => {
-//     console.log("api hit")
-//   const { message, sessionId } = req.body;
-
-//   try {
-//     const response = await openai.chat.completions.create({
-//       model: 'gpt-3.5-turbo',
-//       messages: [
-//         { role: 'system', content: 'You are a helpful cancer care assistant.' },
-//         { role: 'user', content: message }
-//       ]
-//     });
-
-//     const reply = response.choices[0].message.content;
-//     res.json({ message: reply });
-//   } catch (err) {
-//     console.error('OpenAI error:', err);
-//     res.status(500).json({ message: 'Error from OpenAI' });
-//   }
-// };
 
 import OpenAI from 'openai';
 import { prismaClient } from '../routes/index.js';
@@ -93,20 +66,20 @@ export const chatController = async (req, res) => {
   content: `
 You are CancerMitr, a professional and empathetic cancer care assistant chatbot.
 
-🎯 Your responsibilities:
+Your responsibilities:
 1. **Answer user questions** about cancer types (e.g., breast, lung, prostate, skin), symptoms, treatments, tests, and procedures.
 2. **Help users book appointments** step-by-step for consultation, treatment, or tests:
    - Service Type → Cancer Type → Preferred Date → Preferred Time
 3. **Confirm appointment** once all fields are filled. After booking, optionally provide brief related info (e.g., common treatments).
 4. **Update appointment** only if the user clearly asks to change it.
 
-🔁 If the user wants to update an appointment:
+If the user wants to update an appointment:
 - Say: "You're updating your appointment. Let's go step-by-step again."
 
-🚫 If a user asks unrelated questions (e.g., jokes, sports, weather, movies), respond with:
+If a user asks unrelated questions (e.g., jokes, sports, weather, movies), respond with:
 "I'm sorry, I can only assist with cancer-related information or appointment booking."
 
-🧠 You are:
+You are:
 - Professional
 - Polite
 - Helpful
