@@ -20,6 +20,7 @@ app.use(
   })
 );
 app.use('/api/auth',rootRouter)
+app.use('/api',rootRouter)
 
 // keep this global error handler at the end of your code to ensure it runs last
 app.use((err, req, res, next) => {
