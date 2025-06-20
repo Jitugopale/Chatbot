@@ -438,8 +438,9 @@ const ChatPage = () => {
                     <span className="text-sm font-medium text-blue-800">Chat Session</span>
                   </div>
                   <p className="text-xs text-blue-700">
-                    ID: {String(sessionId).substring(0, 8)}...
-                  </p>
+  ID: {String(sessionId).substring(0, 8)}...
+</p>
+
                 </div>
               </div>
             )}
@@ -649,7 +650,7 @@ const ChatPage = () => {
             <div className="text-center">
               <p className="text-xs text-blue-700">
                 💡 <strong>Connected to:</strong> {API_BASE_URL}/api/chat/userChat
-                {sessionId && <span className="ml-2">| Session: {sessionId.substring(0, 8)}...</span>}
+                {sessionId && <span className="ml-2">| Session: {String(sessionId).substring(0, 8)}...</span>}
               </p>
               <p className="text-xs text-blue-600 mt-1">
                 I can help with cancer-related questions and appointment booking. Available 24/7!
