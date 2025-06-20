@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 // API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api/chat/userchat'; // Adjust this to your backend URL
+const API_BASE_URL = 'http://localhost:5000/api/chat/userchat'; // Adjust this to your backend URL
 
 const ChatPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
