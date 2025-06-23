@@ -17,6 +17,7 @@ export const RegisterController = async(req,res,next) =>{
    });
 
    if(user){
+    
     return next(new BadRequestException("User already exists",ErrorCode.USER_ALREADY_EXISTS));
    }
 
