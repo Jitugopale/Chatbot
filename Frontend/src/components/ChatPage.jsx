@@ -13,7 +13,9 @@ import {
   Clock,
   Shield,
   ChevronDown,
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 
 const ChatPage = () => {
@@ -30,6 +32,8 @@ const ChatPage = () => {
   const [sessionId, setSessionId] = useState(null);
   const [bookingComplete, setBookingComplete] = useState(false);
   const [appointmentDetails, setAppointmentDetails] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Configuration
@@ -44,7 +48,6 @@ const ChatPage = () => {
     }
     return null;
   };
-
 
   const decryptData = (encryptedData) => {
     try {
@@ -65,25 +68,153 @@ const ChatPage = () => {
     document.cookie = "isLoggedIn=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
   };
 
+  const getAuthToken = () => {
+    return getCookie('authToken') || authToken || 'demo-token';
+  };
+
+  // Load chat history from backend
+  const loadChatHistory = async () => {
+    try {
+      setIsLoadingHistory(true);
+      const currentAuthToken = getAuthToken();
+      const storedSessionId = sessionStorage.getItem('chatSessionId');
+      
+      console.log('🔍 Starting loadChatHistory...', { 
+        storedSessionId, 
+        hasAuthToken: !!currentAuthToken,
+        authToken: currentAuthToken?.substring(0, 20) + '...'
+      });
+      
+      if (storedSessionId && currentAuthToken) {
+        console.log('📡 Making API call to load history...');
+        
+        const url = `${API_BASE_URL}/api/chat/history/${storedSessionId}`;
+        console.log('🌐 Request URL:', url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'auth-token': currentAuthToken,
+          },
+        });
+
+        console.log('📡 Response status:', response.status);
+        console.log('📡 Response ok:', response.ok);
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('📚 Full API response:', result);
+          
+          if (result.success && result.data?.messages) {
+            console.log('✅ Processing messages...', result.data.messages.length, 'messages found');
+            
+            // Convert backend messages to frontend format
+            const formattedMessages = result.data.messages.map(msg => ({
+              id: msg.id,
+              text: msg.text,
+              sender: msg.sender,
+              timestamp: new Date(msg.timestamp),
+              messageType: msg.messageType || 'text',
+              // Include any other message properties
+              confirmed: msg.confirmed,
+              appointmentDetails: msg.appointmentDetails,
+              requiresConfirmation: msg.requiresConfirmation,
+              requiresModification: msg.requiresModification,
+              appointmentSummary: msg.appointmentSummary,
+              missingFields: msg.missingFields,
+              isError: msg.isError,
+              appointmentId: msg.appointmentId
+            }));
+            
+            console.log('💾 Setting messages in state:', formattedMessages.length, 'messages');
+            setMessages(formattedMessages);
+            setSessionId(storedSessionId);
+            setHistoryLoaded(true);
+            
+            // Check if the last interaction was a completed booking
+            const lastMessage = formattedMessages[formattedMessages.length - 1];
+            if (lastMessage && lastMessage.confirmed && lastMessage.appointmentDetails) {
+              setBookingComplete(true);
+              setAppointmentDetails(lastMessage.appointmentDetails);
+              console.log('🎯 Detected completed booking');
+            }
+            
+            console.log(`✅ Successfully loaded ${formattedMessages.length} messages from chat history`);
+            return;
+          } else {
+            console.log('📭 No messages found in response or invalid format');
+            console.log('📭 Result structure:', { 
+              success: result.success, 
+              hasData: !!result.data, 
+              hasMessages: !!result.data?.messages,
+              messageCount: result.data?.messages?.length || 0
+            });
+          }
+        } else if (response.status === 404) {
+          console.log('⚠️ Session not found (404), clearing stored session ID');
+          sessionStorage.removeItem('chatSessionId');
+          setSessionId(null);
+        } else {
+          const errorText = await response.text();
+          console.error('❌ API call failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorText: errorText
+          });
+        }
+      } else {
+        console.log('ℹ️ No stored session or auth token, skipping history load', {
+          hasStoredSession: !!storedSessionId,
+          hasAuthToken: !!currentAuthToken
+        });
+      }
+      
+      // Only set initial greeting if no history was loaded
+      if (!historyLoaded) {
+        console.log('👋 Setting initial greeting (no history loaded)');
+        setInitialGreeting();
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in loadChatHistory:', error);
+      if (!historyLoaded) {
+        setInitialGreeting();
+      }
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const setInitialGreeting = () => {
+    console.log('👋 Setting initial greeting message');
+    setMessages([{
+      id: 1,
+      text: "Hello! I'm CancerMitr, your AI care assistant. I'm here to help you schedule your cancer care appointments and answer any questions you might have. How can I assist you today?",
+      sender: 'bot',
+      timestamp: new Date()
+    }]);
+    setHistoryLoaded(true);
+  };
+
   // Load user data from cookies
-    useEffect(() => {
+  useEffect(() => {
     const loadUserData = () => {
+      console.log('🍪 Loading user data from cookies...');
+      
       const isLoggedIn = getCookie('isLoggedIn');
       const encryptedProfile = getCookie('userProfile');
-      const authToken = getCookie('authToken');
-      setAuthToken(authToken);
+      const authTokenFromCookie = getCookie('authToken');
+      setAuthToken(authTokenFromCookie);
 
-      
-      // Debug: Log cookie values
-      console.log('Cookies found:', {
+      console.log('🍪 Cookie data:', {
         isLoggedIn,
         hasProfile: !!encryptedProfile,
-        hasAuthToken: !!authToken,
-        authTokenPreview: authToken ? authToken.substring(0, 20) + '...' : 'None'
+        hasAuthToken: !!authTokenFromCookie,
+        authTokenPreview: authTokenFromCookie ? authTokenFromCookie.substring(0, 20) + '...' : 'None'
       });
       
       if (!isLoggedIn || !encryptedProfile) {
-        // For demo purposes, create a mock user
         const mockUser = {
           id: 1,
           name: "John Doe",
@@ -91,22 +222,22 @@ const ChatPage = () => {
           lastLogin: new Date().toISOString()
         };
         setUserProfile(mockUser);
-        setIsLoading(false);
-        return;
-      }
-
-      const profileData = decryptData(encryptedProfile);
-      if (profileData) {
-        setUserProfile(profileData);
+        console.log('👤 Using mock user for demo');
       } else {
-        // Fallback to mock user if decryption fails
-        const mockUser = {
-          id: 1,
-          name: "John Doe",
-          email: "john.doe@example.com",
-          lastLogin: new Date().toISOString()
-        };
-        setUserProfile(mockUser);
+        const profileData = decryptData(encryptedProfile);
+        if (profileData) {
+          setUserProfile(profileData);
+          console.log('👤 Loaded real user profile:', profileData.name);
+        } else {
+          const mockUser = {
+            id: 1,
+            name: "John Doe",
+            email: "john.doe@example.com",
+            lastLogin: new Date().toISOString()
+          };
+          setUserProfile(mockUser);
+          console.log('👤 Fallback to mock user (decryption failed)');
+        }
       }
       setIsLoading(false);
     };
@@ -114,17 +245,13 @@ const ChatPage = () => {
     loadUserData();
   }, []);
 
-  // Initialize chat
+  // Load chat history after user data is loaded
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([{
-        id: 1,
-        text: "Hello! I'm CancerMitr, your AI care assistant. I'm here to help you schedule your cancer care appointments and answer any questions you might have. How can I assist you today?",
-        sender: 'bot',
-        timestamp: new Date()
-      }]);
+    if (userProfile && !isLoading && !historyLoaded) {
+      console.log('🚀 User profile ready, attempting to load chat history...');
+      loadChatHistory();
     }
-  }, []);
+  }, [userProfile, isLoading, historyLoaded]);
 
   useEffect(() => {
     scrollToBottom();
@@ -135,6 +262,7 @@ const ChatPage = () => {
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem('chatSessionId');
     clearCookies();
     window.location.href = '/login';
   };
@@ -159,12 +287,19 @@ const ChatPage = () => {
     setIsChatLoading(true);
 
     try {
+      const currentAuthToken = getAuthToken();
+      
+      console.log('📤 Sending message:', { 
+        message: currentMessage, 
+        sessionId, 
+        hasAuthToken: !!currentAuthToken 
+      });
       
       const response = await fetch(`${API_BASE_URL}/api/chat/userChat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'auth-token': authToken,
+          'auth-token': currentAuthToken,
         },
         body: JSON.stringify({
           message: currentMessage,
@@ -177,10 +312,15 @@ const ChatPage = () => {
       }
       
       const data = await response.json();
+      console.log('📥 Received response:', data);
 
-      // Update session ID if provided
-      if (data.sessionId && !sessionId) {
-        setSessionId(data.sessionId);
+      // Update and persist session ID
+      if (data.sessionId) {
+        if (!sessionId || sessionId !== data.sessionId) {
+          console.log('💾 Updating session ID:', data.sessionId);
+          setSessionId(data.sessionId);
+          sessionStorage.setItem('chatSessionId', String(data.sessionId));
+        }
       }
 
       const botMessage = {
@@ -206,10 +346,24 @@ const ChatPage = () => {
       }
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
+      
+      let errorText = "I'm sorry, I'm having trouble connecting to the server right now.";
+      
+      if (error.message.includes('HTTP error! status: 401')) {
+        errorText = "Your session has expired. Please login again.";
+        setTimeout(() => {
+          handleLogout();
+        }, 3000);
+      } else if (error.message.includes('HTTP error! status: 403')) {
+        errorText = "Access denied. Please check your permissions.";
+      } else if (error.message.includes('Failed to fetch')) {
+        errorText = "Cannot connect to server. Please check if the backend is running on http://localhost:5000";
+      }
+      
       const errorMessage = {
         id: Date.now() + 1,
-        text: "I'm sorry, I'm having trouble connecting to the server right now. Please check if the backend is running on http://localhost:5000 and try again.",
+        text: errorText,
         sender: 'bot',
         timestamp: new Date(),
         isError: true
@@ -235,14 +389,32 @@ const ChatPage = () => {
   };
 
   const startNewBooking = () => {
+    sessionStorage.removeItem('chatSessionId');
+    setSessionId(null);
+    setBookingComplete(false);
+    setAppointmentDetails(null);
+    setHistoryLoaded(false);
+    
     setMessages([{
       id: Date.now(),
       text: "I'd be happy to help you with another appointment. What type of service do you need?",
       sender: 'bot',
       timestamp: new Date()
     }]);
-    setBookingComplete(false);
-    setAppointmentDetails(null);
+    setHistoryLoaded(true);
+  };
+
+  const clearChatHistory = () => {
+    if (window.confirm('Are you sure you want to clear the chat history? This action cannot be undone.')) {
+      sessionStorage.removeItem('chatSessionId');
+      setSessionId(null);
+      setMessages([]);
+      setBookingComplete(false);
+      setAppointmentDetails(null);
+      setHistoryLoaded(false);
+      setInitialGreeting();
+      console.log('🗑️ Chat history cleared by user');
+    }
   };
 
   const handleQuickAction = (service) => {
@@ -267,6 +439,13 @@ const ChatPage = () => {
     }
     
     setInputMessage(message);
+  };
+
+  // Force reload history function for testing
+  const forceReloadHistory = () => {
+    setHistoryLoaded(false);
+    setMessages([]);
+    loadChatHistory();
   };
 
   if (isLoading) {
@@ -322,8 +501,18 @@ const ChatPage = () => {
               </div>
             </div>
 
-            {/* Right side - Back to Dashboard and User Menu */}
+            {/* Right side - Actions and User Menu */}
             <div className="flex items-center space-x-4">
+              {/* Force reload button for testing */}
+              <button
+                onClick={forceReloadHistory}
+                disabled={isLoadingHistory}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full disabled:opacity-50"
+                title="Force reload chat history"
+              >
+                <RefreshCw className={`h-5 w-5 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+              </button>
+
               <button
                 onClick={navigateToDashboard}
                 className="hidden sm:flex items-center px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -424,7 +613,29 @@ const ChatPage = () => {
                 <MessageCircle className="h-5 w-5 mr-3" />
                 Ask AI Assistant
               </button>
+
+              {/* Clear Chat Button */}
+              <button
+                onClick={clearChatHistory}
+                className="w-full flex items-center px-4 py-3 text-left rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                disabled={messages.length <= 1}
+              >
+                <Trash2 className="h-5 w-5 mr-3" />
+                Clear Chat
+              </button>
             </nav>
+
+            {/* Debug Info */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="text-xs space-y-1">
+                <p><strong>Debug Info:</strong></p>
+                <p>Session: {sessionId ? String(sessionId).substring(0, 12) + '...' : 'None'}</p>
+                <p>Messages: {messages.length}</p>
+                <p>History Loaded: {historyLoaded ? 'Yes' : 'No'}</p>
+                <p>Loading: {isLoadingHistory ? 'Yes' : 'No'}</p>
+                <p>Auth Token: {getAuthToken() ? 'Present' : 'Missing'}</p>
+              </div>
+            </div>
 
             {/* Session Info */}
             {sessionId && (
@@ -432,12 +643,19 @@ const ChatPage = () => {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center mb-2">
                     <MessageCircle className="h-4 w-4 text-blue-600 mr-2" />
-                    <span className="text-sm font-medium text-blue-800">Chat Session</span>
+                    <span className="text-sm font-medium text-blue-800">Active Session</span>
                   </div>
                   <p className="text-xs text-blue-700">
-  ID: {String(sessionId).substring(0, 8)}...
-</p>
-
+                    ID: {String(sessionId).substring(0, 8)}...
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Messages: {messages.length}
+                  </p>
+                  {isLoadingHistory && (
+                    <p className="text-xs text-blue-600 mt-1 animate-pulse">
+                      Loading history...
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -486,6 +704,8 @@ const ChatPage = () => {
                   </h2>
                   <p className="text-sm text-gray-600">
                     Book appointments and get cancer care assistance
+                    {isLoadingHistory && <span className="ml-2 text-blue-600">• Loading history...</span>}
+                    {historyLoaded && <span className="ml-2 text-green-600">• History loaded</span>}
                   </p>
                 </div>
               </div>
@@ -503,6 +723,17 @@ const ChatPage = () => {
 
           {/* Messages Container */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 min-h-0">
+            {isLoadingHistory && messages.length === 0 && (
+              <div className="flex justify-center">
+                <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-sm text-gray-600">Loading chat history...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -606,12 +837,12 @@ const ChatPage = () => {
                       minHeight: '50px',
                       maxHeight: '120px'
                     }}
-                    disabled={isChatLoading}
+                    disabled={isChatLoading || isLoadingHistory}
                   />
                 </div>
                 <button
                   onClick={sendMessage}
-                  disabled={!inputMessage.trim() || isChatLoading}
+                  disabled={!inputMessage.trim() || isChatLoading || isLoadingHistory}
                   className="bg-blue-600 text-white p-3 rounded-2xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                 >
                   <Send className="w-5 h-5" />
@@ -628,7 +859,7 @@ const ChatPage = () => {
                   key={service}
                   onClick={() => handleQuickAction(service)}
                   className="flex items-center space-x-2 bg-white border border-gray-200 rounded-full px-4 py-2 text-sm hover:bg-gray-50 transition-colors whitespace-nowrap"
-                  disabled={isChatLoading}
+                  disabled={isChatLoading || isLoadingHistory}
                 >
                   {service === 'Consultation' && <Calendar className="w-4 h-4" />}
                   {service === 'Surgery' && <Clock className="w-4 h-4" />}
@@ -649,6 +880,8 @@ const ChatPage = () => {
               </p>
               <p className="text-xs text-blue-600 mt-1">
                 I can help with cancer-related questions and appointment booking. Available 24/7!
+                {isLoadingHistory && <span className="ml-2">• Loading history...</span>}
+                {historyLoaded && <span className="ml-2">• History loaded ✅</span>}
               </p>
             </div>
           </div>

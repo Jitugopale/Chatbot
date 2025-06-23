@@ -113,45 +113,43 @@ const Login = () => {
       const data = await response.json();
 
       if (response.ok) {
-        console.log("Login successful:", data);
-        setSuccessMessage(data.message || "Login successful! Redirecting to dashboard...");
-        
-        // Clear any existing cookies first
-        clearCookies();
-        
-        // Store authentication token in secure cookie
-        setCookie("authToken", data.token, 7); // 7 days expiry
-        
-        // Encrypt and store user data
-        const encryptedUserData = encryptData(data.user);
-        setCookie("userData", encryptedUserData, 7);
-        
-        // Store user profile information separately for easy access
-        const userProfile = {
-          id: data.user.id,
-          name: data.user.name,
-          email: data.user.email,
-          mobileNo: data.user.mobileNo,
-          lastLogin: new Date().toISOString()
-        };
-        const encryptedProfile = encryptData(userProfile);
-        setCookie("userProfile", encryptedProfile, 7);
-        
-        // Store login status
-        setCookie("isLoggedIn", "true", 7);
-        
-        // Clear form
-        setFormData({
-          email: "",
-          password: ""
-        });
-        
-        // Redirect to dashboard after success
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1500);
-        
-      } else {
+    console.log("Login successful:", data);
+    setSuccessMessage(data.message || "Login successful! Redirecting to dashboard...");
+    
+    // Clear old cookies
+    clearCookies();
+
+    // Store auth token
+    setCookie("authToken", data.token, 7);
+
+    // Encrypt and store user data
+    setCookie("userData", encryptData(data.user), 7);
+
+    // ✅ Store sessionId from backend
+    if (data.sessionId) {
+        setCookie("sessionId", data.sessionId, 7);
+    }
+
+    // Store user profile
+    setCookie("userProfile", encryptData({
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email,
+        mobileNo: data.user.mobileNo,
+        lastLogin: new Date().toISOString()
+    }), 7);
+
+    setCookie("isLoggedIn", "true", 7);
+
+    // Clear form
+    setFormData({ email: "", password: "" });
+
+    // Redirect
+    setTimeout(() => {
+        window.location.href = '/dashboard';
+    }, 1500);
+}
+ else {
         // Handle different types of errors from backend
         if (response.status === 400) {
           if (data.message && data.message.includes("User not found")) {

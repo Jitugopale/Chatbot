@@ -49,6 +49,13 @@ export const LoginController = async(req,res,next) =>{
     return next(new BadRequestException("Password not matched",ErrorCode.INCORRECT_PASSWORD));
    }
 
+    // ✅ Create new ChatSession for this login
+   const newSession = await prismaClient.chatSession.create({
+     data: {
+       userId: user.id
+     }
+   });
+
    const token = jwt.sign({id:user.id},JWT_SECRET,{expiresIn:"1h"});
       
 
@@ -57,6 +64,7 @@ export const LoginController = async(req,res,next) =>{
      message: "User LoggedIn successfully",
      token,
      user,
+    sessionId: newSession.sessionId,
    });
 }
 
