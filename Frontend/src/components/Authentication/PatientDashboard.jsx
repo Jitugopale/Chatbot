@@ -44,12 +44,13 @@ const PatientDashboard = () => {
     }
   };
 
-  const clearCookies = () => {
-    document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "userData=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "userProfile=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    document.cookie = "isLoggedIn=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-  };
+const clearCookies = () => {
+    const cookieNames = ["authToken", "userData", "userProfile", "isLoggedIn", "sessionId"];
+    cookieNames.forEach(name => {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    });
+};
+
 
   // Load user data from cookies
   useEffect(() => {
