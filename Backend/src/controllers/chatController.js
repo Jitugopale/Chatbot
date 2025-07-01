@@ -1,8 +1,11 @@
-import OpenAI from 'openai';
+// Remove OpenAI import and replace with fetch
+// import OpenAI from 'openai';
 import { prismaClient } from '../routes/index.js';
-import { OPENAI_API_KEY } from '../secrets.js';
+// import { OPENAI_API_KEY } from '../secrets.js';
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+// Replace OpenAI client with local LLM endpoint configuration
+const LOCAL_LLM_ENDPOINT = 'https://suspension-lap-standards-additions.trycloudflare.com/v1/api/generate';
+const LOCAL_LLM_MODEL = 'mistral';
 
 // ========================================
 // UTILITY FUNCTIONS
@@ -19,6 +22,143 @@ function normalizeDateText(input) {
         input = input.replace(new RegExp(`\\b${wrong}\\b`, 'gi'), correct);
     }
     return input;
+}
+
+// Helper function to convert OpenAI messages format to a single prompt for local LLM
+function convertMessagesToPrompt(systemMessage, messages) {
+    let prompt = `${systemMessage}\n\n`;
+    
+    // Add conversation history
+    for (const message of messages) {
+        if (message.role === 'system') continue; // Skip system messages in history
+        
+        const roleLabel = message.role === 'user' ? 'Human' : 'Assistant';
+        prompt += `${roleLabel}: ${message.content || message.message}\n\n`;
+    }
+    
+    prompt += "Assistant: ";
+    return prompt;
+}
+
+// Function to call local LLM
+async function callLocalLLM(systemMessage, messages) {
+    try {
+        const prompt = convertMessagesToPrompt(systemMessage, messages);
+        
+        console.log("🤖 === LOCAL LLM DEBUG START ===");
+        console.log("🌐 Endpoint:", LOCAL_LLM_ENDPOINT);
+        console.log("📝 Prompt length:", prompt.length);
+        console.log("📝 First 200 chars of prompt:", prompt.substring(0, 200) + "...");
+        
+        const requestBody = {
+            model: LOCAL_LLM_MODEL,
+            prompt: prompt,
+            stream: false,
+            options: {
+                temperature: 0.7,
+                top_p: 0.9,
+                max_tokens: 1000,
+                stop: ["Human:", "\nHuman:"]
+            }
+        };
+        
+        console.log("📤 Request body:", JSON.stringify(requestBody, null, 2));
+        
+        const response = await fetch(LOCAL_LLM_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(30000) // 30 second timeout
+        });
+
+        console.log("📥 Response status:", response.status);
+        console.log("📥 Response headers:", Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("❌ Response not OK. Status:", response.status);
+            console.error("❌ Error response body:", errorText);
+            throw new Error(`Local LLM API responded with status: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log("📥 Full response data:", JSON.stringify(data, null, 2));
+        
+        // Handle Ollama response format
+        if (data.response) {
+            console.log("✅ Found response in data.response");
+            const cleanResponse = data.response.trim();
+            console.log("✅ Clean response:", cleanResponse);
+            console.log("🤖 === LOCAL LLM DEBUG END ===");
+            return cleanResponse;
+        } else if (data.choices && data.choices[0] && data.choices[0].text) {
+            console.log("✅ Found response in data.choices[0].text");
+            const cleanResponse = data.choices[0].text.trim();
+            console.log("✅ Clean response:", cleanResponse);
+            console.log("🤖 === LOCAL LLM DEBUG END ===");
+            return cleanResponse;
+        } else {
+            console.error("❌ Unexpected response format. Available keys:", Object.keys(data));
+            console.error("❌ Full data:", JSON.stringify(data, null, 2));
+            throw new Error('Unexpected response format from local LLM');
+        }
+
+    } catch (error) {
+        console.error("❌ === LOCAL LLM ERROR ===");
+        console.error("❌ Error name:", error.name);
+        console.error("❌ Error message:", error.message);
+        console.error("❌ Error stack:", error.stack);
+        console.error("❌ === LOCAL LLM ERROR END ===");
+        
+        // Provide different error messages based on error type
+        if (error.name === 'TimeoutError') {
+            throw new Error("The AI service is taking too long to respond. Please try again.");
+        } else if (error.message.includes('fetch') || error.code === 'ECONNREFUSED') {
+            throw new Error("Unable to connect to the AI service. Please check if Ollama is running and the tunnel is active.");
+        } else {
+            throw new Error(`AI service error: ${error.message}`);
+        }
+    }
+}
+
+// Test function to debug the endpoint directly
+async function testLocalLLMEndpoint() {
+    try {
+        console.log("🧪 Testing Local LLM Endpoint...");
+        
+        const testResponse = await fetch(LOCAL_LLM_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: LOCAL_LLM_MODEL,
+                prompt: "Hello, can you respond with 'Test successful'?",
+                stream: false
+            }),
+            signal: AbortSignal.timeout(10000) // 10 second timeout for test
+        });
+
+        console.log("🧪 Test response status:", testResponse.status);
+        
+        if (testResponse.ok) {
+            const testData = await testResponse.json();
+            console.log("🧪 Test response data:", JSON.stringify(testData, null, 2));
+            console.log("✅ Endpoint test successful!");
+            return true;
+        } else {
+            const errorText = await testResponse.text();
+            console.error("❌ Test failed with status:", testResponse.status);
+            console.error("❌ Test error body:", errorText);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error("❌ Endpoint test failed:", error.message);
+        return false;
+    }
 }
 
 function extractServiceInfo(text) {
@@ -679,18 +819,13 @@ export const chatController = async (req, res) => {
     }
 
     // ========================================
-    // 8. GENERATE GPT RESPONSE
+    // 8. GENERATE LOCAL LLM RESPONSE
     // ========================================
-    console.log("🤖 Generating GPT response...");
+    console.log("🤖 Generating Local LLM response...");
     
     let gptReply;
     try {
-      const gptResponse = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: `You are CancerMitr, a professional and empathetic cancer care assistant chatbot.
+      const systemMessage = `You are CancerMitr, a professional and empathetic cancer care assistant chatbot.
 
 🎯 Responsibilities:
 1. Answer questions about cancer (types, treatments, symptoms, prevention, etc.)
@@ -708,21 +843,21 @@ export const chatController = async (req, res) => {
 
 Current extracted info: ${JSON.stringify(extractedInfo)}
 
-IMPORTANT: If information is already extracted above, do NOT ask for it again.`
-          },
-          ...history.slice(-15).map(m => ({
-            role: m.role,
-            content: m.message
-          })),
-          { role: 'user', content: message }
-        ]
-      });
+IMPORTANT: If information is already extracted above, do NOT ask for it again.`;
 
-      gptReply = gptResponse.choices[0].message.content;
-      console.log("✅ GPT response generated");
+      const conversationHistory = [
+        ...history.slice(-15).map(m => ({
+          role: m.role,
+          content: m.message
+        })),
+        { role: 'user', content: message }
+      ];
+
+      gptReply = await callLocalLLM(systemMessage, conversationHistory);
+      console.log("✅ Local LLM response generated");
       
     } catch (error) {
-      console.error("❌ GPT API error:", error);
+      console.error("❌ Local LLM API error:", error);
       gptReply = "I apologize, but I'm having trouble processing your request right now. Please try again in a moment.";
     }
 
@@ -823,7 +958,7 @@ if (hasAllFields && isConfirming && (!existingService || !isSameAsExisting)) {
     }
 
     // ========================================
-    // 11. SAVE GPT RESPONSE
+    // 11. SAVE LLM RESPONSE
     // ========================================
     let responseToSend = gptReply;
     let savedAssistantMessage = null;

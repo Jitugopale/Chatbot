@@ -1,0 +1,52 @@
+[
+    {
+        "product_name": "Neutriplate Capsules",
+        "description": "Herbal supplement that supports platelet production in patients undergoing chemotherapy.",
+        "recommended_for": ["Low platelet count", "Bleeding gums", "Easy bruising", "Chemotherapy-induced thrombocytopenia"]
+    },
+    {
+        "product_name": "ChemoRelief Mouthwash",
+        "description": "Soothing mouthwash to reduce oral mucositis caused by chemotherapy and radiation.",
+        "recommended_for": ["Mouth ulcers", "Oral mucositis", "Dry mouth", "Painful swallowing"]
+    },
+    {
+        "product_name": "OncoSupport Nutrition Powder",
+        "description": "High-calorie, protein-rich nutritional supplement for cancer patients with poor appetite.",
+        "recommended_for": ["Loss of appetite", "Weight loss", "Fatigue", "Muscle wasting"]
+    },
+    {
+        "product_name": "ScalpCool Cap",
+        "description": "Cold cap therapy to reduce hair loss during chemotherapy.",
+        "recommended_for": ["Hair fall", "Chemotherapy-induced alopecia", "Emotional distress due to appearance changes"]
+    },
+    {
+        "product_name": "SkinSooth Cream",
+        "description": "Topical cream to manage radiation dermatitis and skin irritation.",
+        "recommended_for": ["Redness", "Skin peeling", "Itching", "Radiation-induced skin damage"]
+    },
+    {
+        "product_name": "Anti-Nausea Band",
+        "description": "Acupressure band for relief from nausea and vomiting.",
+        "recommended_for": ["Nausea", "Vomiting", "Motion sickness", "Chemotherapy side effects"]
+    },
+    {
+        "product_name": "ComfortFit Mastectomy Bra",
+        "description": "Soft, pocketed bra designed for post-mastectomy comfort and support.",
+        "recommended_for": ["Post-mastectomy recovery", "Breast surgery", "Tenderness", "Swelling"]
+    },
+    {
+        "product_name": "Immune Boost Herbal Tea",
+        "description": "Blend of immune-boosting herbs to support the body during cancer treatment.",
+        "recommended_for": ["Weakened immunity", "Fatigue", "Cold and flu susceptibility", "Low white blood cell count"]
+    },
+    {
+        "product_name": "OncoLax Stool Softener",
+        "description": "Gentle stool softener to relieve chemotherapy-induced constipation.",
+        "recommended_for": ["Constipation", "Hard stools", "Abdominal discomfort", "Opioid-induced bowel issues"]
+    },
+    {
+        "product_name": "LymphCare Arm Sleeve",
+        "description": "Compression sleeve to prevent and manage lymphedema after lymph node removal.",
+        "recommended_for": ["Swelling in arm", "Lymphedema", "Heaviness in limbs", "Post-surgery recovery"]
+    }
+]

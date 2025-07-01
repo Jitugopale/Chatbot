@@ -13,3 +13,7 @@ rootRouter.use("/user", userRouter);
 rootRouter.use("/chat", chatRouter);
 
 export default rootRouter;
+
+
+
+
