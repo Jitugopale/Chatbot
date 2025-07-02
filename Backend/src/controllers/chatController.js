@@ -4,7 +4,8 @@ import { prismaClient } from '../routes/index.js';
 // import { OPENAI_API_KEY } from '../secrets.js';
 
 // Replace OpenAI client with local LLM endpoint configuration
-const LOCAL_LLM_ENDPOINT = 'https://suspension-lap-standards-additions.trycloudflare.com/v1/api/generate';
+// const LOCAL_LLM_ENDPOINT = 'https://suspension-lap-standards-additions.trycloudflare.com/v1/api/generate';
+const LOCAL_LLM_ENDPOINT = 'https://prophet-rotary-ladies-northern.trycloudflare.com/v1/api/generate';
 const LOCAL_LLM_MODEL = 'mistral';
 
 // ========================================
