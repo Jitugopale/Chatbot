@@ -5,8 +5,8 @@ import { prismaClient } from '../routes/index.js';
 
 // Replace OpenAI client with local LLM endpoint configuration
 // const LOCAL_LLM_ENDPOINT = 'https://suspension-lap-standards-additions.trycloudflare.com/v1/api/generate';
-const LOCAL_LLM_ENDPOINT = 'https://prophet-rotary-ladies-northern.trycloudflare.com/v1/api/generate';
-const LOCAL_LLM_MODEL = 'mistral';
+const LOCAL_LLM_ENDPOINT = 'https://protect-winston-cd-necessity.trycloudflare.com/v1/api/generate';
+const LOCAL_LLM_MODEL = 'gemma:2b';
 
 // ========================================
 // UTILITY FUNCTIONS
@@ -42,80 +42,122 @@ function convertMessagesToPrompt(systemMessage, messages) {
 }
 
 // Function to call local LLM
+// Function to call local LLM - CORRECTED VERSION
+// ✅ QUICK FIX: Non-streaming approach with optimized settings
 async function callLocalLLM(systemMessage, messages) {
     try {
         const prompt = convertMessagesToPrompt(systemMessage, messages);
         
-        console.log("🤖 === LOCAL LLM DEBUG START ===");
+        console.log("🤖 === LOCAL LLM QUICK DEBUG START ===");
         console.log("🌐 Endpoint:", LOCAL_LLM_ENDPOINT);
         console.log("📝 Prompt length:", prompt.length);
         console.log("📝 First 200 chars of prompt:", prompt.substring(0, 200) + "...");
         
+        // ✅ OPTIMIZED: Reduced settings for faster response
         const requestBody = {
             model: LOCAL_LLM_MODEL,
             prompt: prompt,
-            stream: false,
-            options: {
-                temperature: 0.7,
-                top_p: 0.9,
-                max_tokens: 1000,
-                stop: ["Human:", "\nHuman:"]
-            }
+            stream: false,                  // Keep non-streaming for simplicity
+            num_predict: 300,               // ✅ REDUCED from 1000 to 300 for faster response
+            temperature: 0.7,               
+            top_p: 0.9,                    
+            stop: ["Human:", "\nHuman:"],
+            // ✅ ADD: Additional optimizations for speed
+            top_k: 40,                      // Limit vocabulary for faster generation
+            repeat_penalty: 1.1,            // Prevent repetition
+            seed: -1                        // Random seed for variety
         };
         
         console.log("📤 Request body:", JSON.stringify(requestBody, null, 2));
         
-        const response = await fetch(LOCAL_LLM_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-            signal: AbortSignal.timeout(30000) // 30 second timeout
-        });
+        // ✅ IMPROVED: Multiple timeout attempts with different settings
+        const attemptRequest = async (timeout, numPredict) => {
+            const body = { ...requestBody, num_predict: numPredict };
+            
+            console.log(`🔄 Attempting request with ${numPredict} tokens, ${timeout/1000}s timeout`);
+            
+            const response = await fetch(LOCAL_LLM_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(timeout)
+            });
 
-        console.log("📥 Response status:", response.status);
-        console.log("📥 Response headers:", Object.fromEntries(response.headers.entries()));
+            console.log("📥 Response status:", response.status);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("❌ Response not OK. Status:", response.status);
-            console.error("❌ Error response body:", errorText);
-            throw new Error(`Local LLM API responded with status: ${response.status} - ${errorText}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("❌ Response not OK. Status:", response.status);
+                console.error("❌ Error response body:", errorText);
+                throw new Error(`Local LLM API responded with status: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            console.log("📥 Response data keys:", Object.keys(data));
+            
+            // Handle Ollama response format
+            if (data.response) {
+                console.log("✅ Found response in data.response");
+                const cleanResponse = data.response.trim();
+                console.log("✅ Response length:", cleanResponse.length);
+                return cleanResponse;
+            } else if (data.choices && data.choices[0] && data.choices[0].text) {
+                console.log("✅ Found response in data.choices[0].text");
+                const cleanResponse = data.choices[0].text.trim();
+                return cleanResponse;
+            } else {
+                console.error("❌ Unexpected response format. Available keys:", Object.keys(data));
+                throw new Error('Unexpected response format from local LLM');
+            }
+        };
+
+        // ✅ FALLBACK STRATEGY: Try multiple approaches with decreasing expectations
+        const attempts = [
+            { timeout: 25000, tokens: 300 },   // 25s timeout, 300 tokens
+            { timeout: 20000, tokens: 200 },   // 20s timeout, 200 tokens  
+            { timeout: 15000, tokens: 150 },   // 15s timeout, 150 tokens
+            { timeout: 10000, tokens: 100 }    // 10s timeout, 100 tokens (minimal)
+        ];
+
+        for (let i = 0; i < attempts.length; i++) {
+            try {
+                const { timeout, tokens } = attempts[i];
+                console.log(`🔄 Attempt ${i + 1}/${attempts.length}: ${tokens} tokens, ${timeout/1000}s timeout`);
+                
+                const result = await attemptRequest(timeout, tokens);
+                
+                if (result && result.length > 10) { // Ensure we got a meaningful response
+                    console.log("✅ Successful response received");
+                    console.log("🤖 === LOCAL LLM QUICK DEBUG END ===");
+                    return result;
+                }
+                
+            } catch (error) {
+                console.warn(`⚠️ Attempt ${i + 1} failed:`, error.message);
+                
+                // If this is the last attempt, throw the error
+                if (i === attempts.length - 1) {
+                    throw error;
+                }
+                
+                // Otherwise, continue to next attempt
+                console.log(`🔄 Trying next attempt with lower settings...`);
+            }
         }
 
-        const data = await response.json();
-        console.log("📥 Full response data:", JSON.stringify(data, null, 2));
-        
-        // Handle Ollama response format
-        if (data.response) {
-            console.log("✅ Found response in data.response");
-            const cleanResponse = data.response.trim();
-            console.log("✅ Clean response:", cleanResponse);
-            console.log("🤖 === LOCAL LLM DEBUG END ===");
-            return cleanResponse;
-        } else if (data.choices && data.choices[0] && data.choices[0].text) {
-            console.log("✅ Found response in data.choices[0].text");
-            const cleanResponse = data.choices[0].text.trim();
-            console.log("✅ Clean response:", cleanResponse);
-            console.log("🤖 === LOCAL LLM DEBUG END ===");
-            return cleanResponse;
-        } else {
-            console.error("❌ Unexpected response format. Available keys:", Object.keys(data));
-            console.error("❌ Full data:", JSON.stringify(data, null, 2));
-            throw new Error('Unexpected response format from local LLM');
-        }
+        throw new Error('All attempts failed to get response from local LLM');
 
     } catch (error) {
-        console.error("❌ === LOCAL LLM ERROR ===");
+        console.error("❌ === LOCAL LLM QUICK ERROR ===");
         console.error("❌ Error name:", error.name);
         console.error("❌ Error message:", error.message);
-        console.error("❌ Error stack:", error.stack);
-        console.error("❌ === LOCAL LLM ERROR END ===");
+        console.error("❌ === LOCAL LLM QUICK ERROR END ===");
         
         // Provide different error messages based on error type
-        if (error.name === 'TimeoutError') {
-            throw new Error("The AI service is taking too long to respond. Please try again.");
+        if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+            throw new Error("The AI service is taking too long to respond. The model might be overloaded. Please try again.");
         } else if (error.message.includes('fetch') || error.code === 'ECONNREFUSED') {
             throw new Error("Unable to connect to the AI service. Please check if Ollama is running and the tunnel is active.");
         } else {
@@ -124,10 +166,10 @@ async function callLocalLLM(systemMessage, messages) {
     }
 }
 
-// Test function to debug the endpoint directly
+// ✅ IMPROVED: Quick test function with fallback
 async function testLocalLLMEndpoint() {
     try {
-        console.log("🧪 Testing Local LLM Endpoint...");
+        console.log("🧪 Testing Local LLM Endpoint with quick settings...");
         
         const testResponse = await fetch(LOCAL_LLM_ENDPOINT, {
             method: 'POST',
@@ -136,8 +178,11 @@ async function testLocalLLMEndpoint() {
             },
             body: JSON.stringify({
                 model: LOCAL_LLM_MODEL,
-                prompt: "Hello, can you respond with 'Test successful'?",
-                stream: false
+                prompt: "Say 'OK' if you can hear me.",
+                stream: false,
+                num_predict: 50,        // Very small for quick test
+                temperature: 0.1,       // Low temperature for consistent response
+                top_k: 10              // Very focused response
             }),
             signal: AbortSignal.timeout(10000) // 10 second timeout for test
         });
@@ -146,9 +191,13 @@ async function testLocalLLMEndpoint() {
         
         if (testResponse.ok) {
             const testData = await testResponse.json();
-            console.log("🧪 Test response data:", JSON.stringify(testData, null, 2));
-            console.log("✅ Endpoint test successful!");
-            return true;
+            console.log("🧪 Test response keys:", Object.keys(testData));
+            
+            if (testData.response) {
+                console.log("🧪 Test response content:", testData.response);
+                console.log("✅ Quick endpoint test successful!");
+                return true;
+            }
         } else {
             const errorText = await testResponse.text();
             console.error("❌ Test failed with status:", testResponse.status);
@@ -157,7 +206,7 @@ async function testLocalLLMEndpoint() {
         }
         
     } catch (error) {
-        console.error("❌ Endpoint test failed:", error.message);
+        console.error("❌ Quick endpoint test failed:", error.message);
         return false;
     }
 }

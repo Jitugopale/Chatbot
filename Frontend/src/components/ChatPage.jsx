@@ -18,8 +18,15 @@ import {
   Trash2
 } from 'lucide-react';
 
-// API configuration
-const API_BASE_URL = 'http://localhost:5000/api/chat/userchat'; // Adjust this to your backend URL
+// ✅ FIXED: Single API configuration
+const API_CONFIG = {
+  BASE_URL: 'http://localhost:5000',
+  ENDPOINTS: {
+    CHAT: '/api/chat/userChat',        // ✅ Consistent with your backend route
+    HISTORY: '/api/chat/history'
+  },
+  TIMEOUT: 30000
+};
 
 const ChatPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -39,8 +46,7 @@ const ChatPage = () => {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Configuration
-  const API_BASE_URL = 'http://localhost:5000';
+  // ✅ REMOVED: Duplicate API_BASE_URL declaration
 
   // Cookie management functions
   const getCookie = (name) => {
@@ -75,115 +81,140 @@ const ChatPage = () => {
     return getCookie('authToken') || authToken || 'demo-token';
   };
 
-  // Load chat history from backend
+  // ✅ FIXED: Enhanced API helper function
+  const makeAPIRequest = async (endpoint, options = {}) => {
+    const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+    const currentAuthToken = getAuthToken();
+    
+    console.log(`📤 === API REQUEST DEBUG ===`);
+    console.log(`📤 URL: ${url}`);
+    console.log(`📤 Method: ${options.method || 'GET'}`);
+    console.log(`📤 Auth Token Present: ${!!currentAuthToken}`);
+    console.log(`📤 Auth Token Preview: ${currentAuthToken ? currentAuthToken.substring(0, 20) + '...' : 'None'}`);
+    
+    const config = {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'auth-token': currentAuthToken,
+        ...options.headers
+      },
+      ...options
+    };
+
+    if (options.body && typeof options.body === 'object') {
+      config.body = JSON.stringify(options.body);
+      console.log(`📤 Request Body:`, options.body);
+    }
+
+    // Add timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
+    config.signal = controller.signal;
+
+    try {
+      console.log(`📤 Making fetch request...`);
+      const response = await fetch(url, config);
+      clearTimeout(timeoutId);
+
+      console.log(`📥 === API RESPONSE DEBUG ===`);
+      console.log(`📥 Response Status: ${response.status}`);
+      console.log(`📥 Response OK: ${response.ok}`);
+      console.log(`📥 Response Headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Response Error Body:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log(`📥 Response Data:`, data);
+      return data;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error(`❌ === API ERROR DEBUG ===`);
+      console.error(`❌ Error Name: ${error.name}`);
+      console.error(`❌ Error Message: ${error.message}`);
+      console.error(`❌ Error Stack:`, error.stack);
+
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. Please try again.');
+      }
+
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error(`Cannot connect to server at ${API_CONFIG.BASE_URL}. Please check if the backend is running.`);
+      }
+
+      throw error;
+    }
+  };
+
+  // ✅ FIXED: Enhanced loadChatHistory function
   const loadChatHistory = async () => {
     try {
       setIsLoadingHistory(true);
-      const currentAuthToken = getAuthToken();
       const storedSessionId = sessionStorage.getItem('chatSessionId');
       
-      console.log('🔍 Starting loadChatHistory...', { 
-        storedSessionId, 
-        hasAuthToken: !!currentAuthToken,
-        authToken: currentAuthToken?.substring(0, 20) + '...'
-      });
+      console.log('🔍 === LOADING CHAT HISTORY ===');
+      console.log('🔍 Stored Session ID:', storedSessionId);
       
-      if (storedSessionId && currentAuthToken) {
-        console.log('📡 Making API call to load history...');
-        
-        const url = `${API_BASE_URL}/api/chat/history/${storedSessionId}`;
-        console.log('🌐 Request URL:', url);
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'auth-token': currentAuthToken,
-          },
-        });
+      if (!storedSessionId) {
+        console.log('ℹ️ No stored session ID, setting initial greeting');
+        setInitialGreeting();
+        return;
+      }
 
-        console.log('📡 Response status:', response.status);
-        console.log('📡 Response ok:', response.ok);
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('📚 Full API response:', result);
-          
-          if (result.success && result.data?.messages) {
-            console.log('✅ Processing messages...', result.data.messages.length, 'messages found');
-            
-            // Convert backend messages to frontend format
-            const formattedMessages = result.data.messages.map(msg => ({
-              id: msg.id,
-              text: msg.text,
-              sender: msg.sender,
-              timestamp: new Date(msg.timestamp),
-              messageType: msg.messageType || 'text',
-              // Include any other message properties
-              confirmed: msg.confirmed,
-              appointmentDetails: msg.appointmentDetails,
-              requiresConfirmation: msg.requiresConfirmation,
-              requiresModification: msg.requiresModification,
-              appointmentSummary: msg.appointmentSummary,
-              missingFields: msg.missingFields,
-              isError: msg.isError,
-              appointmentId: msg.appointmentId
-            }));
-            
-            console.log('💾 Setting messages in state:', formattedMessages.length, 'messages');
-            setMessages(formattedMessages);
-            setSessionId(storedSessionId);
-            setHistoryLoaded(true);
-            
-            // Check if the last interaction was a completed booking
-            const lastMessage = formattedMessages[formattedMessages.length - 1];
-            if (lastMessage && lastMessage.confirmed && lastMessage.appointmentDetails) {
-              setBookingComplete(true);
-              setAppointmentDetails(lastMessage.appointmentDetails);
-              console.log('🎯 Detected completed booking');
-            }
-            
-            console.log(`✅ Successfully loaded ${formattedMessages.length} messages from chat history`);
-            return;
-          } else {
-            console.log('📭 No messages found in response or invalid format');
-            console.log('📭 Result structure:', { 
-              success: result.success, 
-              hasData: !!result.data, 
-              hasMessages: !!result.data?.messages,
-              messageCount: result.data?.messages?.length || 0
-            });
-          }
-        } else if (response.status === 404) {
-          console.log('⚠️ Session not found (404), clearing stored session ID');
-          sessionStorage.removeItem('chatSessionId');
-          setSessionId(null);
-        } else {
-          const errorText = await response.text();
-          console.error('❌ API call failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText
-          });
+      const data = await makeAPIRequest(`${API_CONFIG.ENDPOINTS.HISTORY}/${storedSessionId}`);
+      
+      if (data.success && data.data?.messages) {
+        console.log('✅ Processing', data.data.messages.length, 'messages from history');
+        
+        const formattedMessages = data.data.messages.map(msg => ({
+          id: msg.id,
+          text: msg.text,
+          sender: msg.sender,
+          timestamp: new Date(msg.timestamp),
+          messageType: msg.messageType || 'text',
+          confirmed: msg.confirmed,
+          appointmentDetails: msg.appointmentDetails,
+          requiresConfirmation: msg.requiresConfirmation,
+          requiresModification: msg.requiresModification,
+          appointmentSummary: msg.appointmentSummary,
+          missingFields: msg.missingFields,
+          isError: msg.isError,
+          appointmentId: msg.appointmentId
+        }));
+        
+        setMessages(formattedMessages);
+        setSessionId(storedSessionId);
+        setHistoryLoaded(true);
+        
+        // Check for completed booking
+        const lastMessage = formattedMessages[formattedMessages.length - 1];
+        if (lastMessage && lastMessage.confirmed && lastMessage.appointmentDetails) {
+          setBookingComplete(true);
+          setAppointmentDetails(lastMessage.appointmentDetails);
+          console.log('🎯 Detected completed booking from history');
         }
+        
+        console.log(`✅ Successfully loaded ${formattedMessages.length} messages from chat history`);
       } else {
-        console.log('ℹ️ No stored session or auth token, skipping history load', {
-          hasStoredSession: !!storedSessionId,
-          hasAuthToken: !!currentAuthToken
-        });
-      }
-      
-      // Only set initial greeting if no history was loaded
-      if (!historyLoaded) {
-        console.log('👋 Setting initial greeting (no history loaded)');
+        console.log('📭 No messages found in history response');
         setInitialGreeting();
       }
-      
+
     } catch (error) {
-      console.error('❌ Error in loadChatHistory:', error);
-      if (!historyLoaded) {
-        setInitialGreeting();
+      console.error('❌ Load history error:', error);
+      
+      if (error.message.includes('HTTP 404')) {
+        console.log('⚠️ Session not found (404), clearing stored session ID');
+        sessionStorage.removeItem('chatSessionId');
+        setSessionId(null);
       }
+      
+      setInitialGreeting();
     } finally {
       setIsLoadingHistory(false);
     }
@@ -274,6 +305,7 @@ const ChatPage = () => {
     window.location.href = '/dashboard';
   };
 
+  // ✅ FIXED: Enhanced sendMessage function
   const sendMessage = async () => {
     if (!inputMessage.trim() || isChatLoading) return;
 
@@ -290,39 +322,25 @@ const ChatPage = () => {
     setIsChatLoading(true);
 
     try {
-      const currentAuthToken = getAuthToken();
+      console.log('📤 === SENDING MESSAGE ===');
+      console.log('📤 Message:', currentMessage);
+      console.log('📤 Session ID:', sessionId);
       
-      console.log('📤 Sending message:', { 
-        message: currentMessage, 
-        sessionId, 
-        hasAuthToken: !!currentAuthToken 
-      });
-      
-      const response = await fetch(`${API_BASE_URL}/api/chat/userChat`, {
+      const data = await makeAPIRequest(API_CONFIG.ENDPOINTS.CHAT, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'auth-token': currentAuthToken,
-        },
-        body: JSON.stringify({
+        body: {
           message: currentMessage,
           sessionId: sessionId
-        }),
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('📥 Received response:', data);
-
-      // Update and persist session ID
+      // Update session ID if provided
       if (data.sessionId) {
-        if (!sessionId || sessionId !== data.sessionId) {
-          console.log('💾 Updating session ID:', data.sessionId);
-          setSessionId(data.sessionId);
-          sessionStorage.setItem('chatSessionId', String(data.sessionId));
+        const newSessionId = String(data.sessionId);
+        if (!sessionId || sessionId !== newSessionId) {
+          console.log('💾 Updating session ID from', sessionId, 'to', newSessionId);
+          setSessionId(newSessionId);
+          sessionStorage.setItem('chatSessionId', newSessionId);
         }
       }
 
@@ -349,19 +367,23 @@ const ChatPage = () => {
       }
 
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.error('❌ Send message error:', error);
       
-      let errorText = "I'm sorry, I'm having trouble connecting to the server right now.";
+      let errorText = "I'm sorry, I'm having trouble right now. Please try again.";
       
-      if (error.message.includes('HTTP error! status: 401')) {
+      if (error.message.includes('HTTP 401')) {
         errorText = "Your session has expired. Please login again.";
         setTimeout(() => {
           handleLogout();
         }, 3000);
-      } else if (error.message.includes('HTTP error! status: 403')) {
+      } else if (error.message.includes('HTTP 403')) {
         errorText = "Access denied. Please check your permissions.";
-      } else if (error.message.includes('Failed to fetch')) {
-        errorText = "Cannot connect to server. Please check if the backend is running on http://localhost:5000";
+      } else if (error.message.includes('Cannot connect')) {
+        errorText = `Cannot connect to server. Please check if the backend is running on ${API_CONFIG.BASE_URL}`;
+      } else if (error.message.includes('timed out')) {
+        errorText = "Request timed out. The server might be busy. Please try again.";
+      } else if (error.message.includes('HTTP 500')) {
+        errorText = "Server error occurred. Please try again or contact support.";
       }
       
       const errorMessage = {
@@ -374,6 +396,26 @@ const ChatPage = () => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsChatLoading(false);
+    }
+  };
+
+  // ✅ ADDED: Test connection function for debugging
+  const testConnection = async () => {
+    try {
+      console.log('🧪 === TESTING CONNECTION ===');
+      const data = await makeAPIRequest(API_CONFIG.ENDPOINTS.CHAT, {
+        method: 'POST',
+        body: {
+          message: 'Test connection',
+          sessionId: null
+        }
+      });
+      
+      console.log('✅ Connection test successful:', data);
+      alert('✅ Connection test successful! Check console for details.');
+    } catch (error) {
+      console.error('❌ Connection test failed:', error);
+      alert(`❌ Connection test failed: ${error.message}`);
     }
   };
 
@@ -480,6 +522,17 @@ const ChatPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* ✅ ADDED: Test button for debugging (remove in production) */}
+      <div className="fixed top-2 right-2 z-50">
+        <button
+          onClick={testConnection}
+          className="bg-red-500 text-white px-3 py-1 rounded text-xs shadow-lg hover:bg-red-600"
+          title="Test API Connection"
+        >
+          Test API
+        </button>
+      </div>
+
       {/* Navigation Header */}
       <nav className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className="px-4 sm:px-6 lg:px-8">
@@ -628,10 +681,11 @@ const ChatPage = () => {
               </button>
             </nav>
 
-            {/* Debug Info */}
+            {/* ✅ UPDATED: Debug Info with API endpoint */}
             <div className="p-4 border-t border-gray-200 bg-gray-50">
               <div className="text-xs space-y-1">
                 <p><strong>Debug Info:</strong></p>
+                <p>API: {API_CONFIG.BASE_URL}{API_CONFIG.ENDPOINTS.CHAT}</p>
                 <p>Session: {sessionId ? String(sessionId).substring(0, 12) + '...' : 'None'}</p>
                 <p>Messages: {messages.length}</p>
                 <p>History Loaded: {historyLoaded ? 'Yes' : 'No'}</p>
@@ -876,11 +930,11 @@ const ChatPage = () => {
             </div>
           </div>
 
-          {/* Connection Status */}
+          {/* ✅ UPDATED: Connection Status with correct URL */}
           <div className="bg-blue-50 border-t border-blue-200 p-3 flex-shrink-0">
             <div className="text-center">
               <p className="text-xs text-blue-700">
-                💡 <strong>Connected to:</strong> {API_BASE_URL}/api/chat/userChat
+                💡 <strong>Connected to:</strong> {API_CONFIG.BASE_URL}{API_CONFIG.ENDPOINTS.CHAT}
                 {sessionId && <span className="ml-2">| Session: {String(sessionId).substring(0, 8)}...</span>}
               </p>
               <p className="text-xs text-blue-600 mt-1">
